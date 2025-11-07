@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import React, { useState, useMemo } from 'react';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, TextInput } from 'react-native';
+import { collection, query, where, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { useFocusEffect } from '@react-navigation/native';
+import DateTimePickerModal from "react-native-modal-datetime-picker";
 
 const STATUSES = ["All", "Pending", "Shipped", "Completed", "Cancelled"];
 
@@ -27,12 +28,16 @@ const FilterTabs = ({ selected, onSelect }) => {
     );
 };
 
-
 const OrderListScreen = ({ navigation }) => {
-    const [orders, setOrders] = useState([]);
+    const [orders, setOrders] = useState([]); // Holds the raw data from Firestore
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState('');
-    const [activeFilter, setActiveFilter] = useState("All"); // State for the active filter
+    const [activeFilter, setActiveFilter] = useState("All");
+    const [startDate, setStartDate] = useState(null);
+    const [endDate, setEndDate] = useState(null);
+    const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
+    const [datePickerMode, setDatePickerMode] = useState('start');
+    const [searchQuery, setSearchQuery] = useState(''); // State for the search bar
 
     useFocusEffect(
         React.useCallback(() => {
@@ -43,36 +48,37 @@ const OrderListScreen = ({ navigation }) => {
             const { role } = navigation.getState().routes.find(r => r.name === 'OrderList').params || {};
             setUserRole(role);
 
-            // Base query definition
             let q = collection(db, 'orders');
             let constraints = [orderBy("createdAt", "desc")];
-            
-            // --- QUERY LOGIC ---
-            // 1. Filter by user role
+
+            // Filter by user role
             if (role === 'admin') {
                 constraints.push(where("fulfilledBy", "==", "admin"));
             } else if (role === 'distributor') {
-                // For now, showing orders they FULFILL.
-                // A toggle for "My Orders" vs "Incoming" would be a future enhancement.
                 constraints.push(where("fulfilledBy", "==", currentUser.uid));
             } else { // medical_store
                 constraints.push(where("placedBy.uid", "==", currentUser.uid));
             }
 
-            // 2. Add status filter if not "All"
+            // Add status filter
             if (activeFilter !== "All") {
-                // Firestore queries are case-sensitive, so we might need to query for both
-                // for robustness, but assuming our statuses are well-managed now.
                 constraints.push(where("status", "==", activeFilter));
+            }
+
+            // Add date filter
+            if (startDate) {
+                constraints.push(where("createdAt", ">=", Timestamp.fromDate(startDate)));
+            }
+            if (endDate) {
+                const endOfDay = new Date(endDate);
+                endOfDay.setHours(23, 59, 59, 999);
+                constraints.push(where("createdAt", "<=", Timestamp.fromDate(endOfDay)));
             }
 
             const finalQuery = query(q, ...constraints);
 
-            const unsubscribe = onSnapshot(finalQuery, (querySnapshot) => {
-                const ordersData = [];
-                querySnapshot.forEach((doc) => {
-                    ordersData.push({ ...doc.data(), id: doc.id });
-                });
+            const unsubscribe = onSnapshot(finalQuery, (snapshot) => {
+                const ordersData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
                 setOrders(ordersData);
                 setLoading(false);
             }, (error) => {
@@ -81,11 +87,46 @@ const OrderListScreen = ({ navigation }) => {
             });
 
             return () => unsubscribe();
-        }, [activeFilter]) // Re-run the effect whenever the activeFilter changes
+        }, [activeFilter, startDate, endDate])
     );
-      
+
+    // Client-side filtering logic for the search bar
+    const filteredOrders = useMemo(() => {
+        if (!searchQuery) {
+            return orders; // If search is empty, return all orders from the current query
+        }
+        const lowercasedQuery = searchQuery.toLowerCase();
+        return orders.filter(order => {
+            const orderIdMatch = order.id.toLowerCase().includes(lowercasedQuery);
+            const placedByNameMatch = order.placedBy?.name?.toLowerCase().includes(lowercasedQuery);
+            return orderIdMatch || placedByNameMatch;
+        });
+    }, [searchQuery, orders]);
+
+    const showDatePicker = (mode) => {
+        setDatePickerMode(mode);
+        setDatePickerVisibility(true);
+    };
+
+    const hideDatePicker = () => {
+        setDatePickerVisibility(false);
+    };
+
+    const handleConfirmDate = (date) => {
+        if (datePickerMode === 'start') {
+            setStartDate(date);
+        } else {
+            setEndDate(date);
+        }
+        hideDatePicker();
+    };
+    
+    const clearDates = () => {
+        setStartDate(null);
+        setEndDate(null);
+    };
+    
     const getStatusStyle = (status) => {
-        // ... (this function remains the same) ...
         switch (status.toLowerCase()) {
             case 'pending': return styles.statusPending;
             case 'shipped': return styles.statusShipped;
@@ -96,7 +137,6 @@ const OrderListScreen = ({ navigation }) => {
     };
 
     const renderItem = ({ item }) => (
-        // ... (this function remains the same) ...
         <TouchableOpacity style={styles.orderItem} onPress={() => navigation.navigate('OrderDetail', { orderId: item.id, role: userRole })}>
             <View>
                 <Text style={styles.orderId}>Order ID: {item.id.substring(0, 8)}...</Text>
@@ -113,50 +153,67 @@ const OrderListScreen = ({ navigation }) => {
 
     return (
         <View style={styles.container}>
+            <DateTimePickerModal
+                isVisible={isDatePickerVisible}
+                mode="date"
+                onConfirm={handleConfirmDate}
+                onCancel={hideDatePicker}
+            />
+
             <FilterTabs selected={activeFilter} onSelect={setActiveFilter} />
+
+            <View style={styles.dateFilterContainer}>
+                <TouchableOpacity style={styles.dateBox} onPress={() => showDatePicker('start')}>
+                    <Text style={styles.dateLabel}>Start Date</Text>
+                    <Text style={styles.dateText}>{startDate ? startDate.toLocaleDateString() : 'Select'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.dateBox} onPress={() => showDatePicker('end')}>
+                    <Text style={styles.dateLabel}>End Date</Text>
+                    <Text style={styles.dateText}>{endDate ? endDate.toLocaleDateString() : 'Select'}</Text>
+                </TouchableOpacity>
+                {(startDate || endDate) && (
+                    <TouchableOpacity style={styles.clearButton} onPress={clearDates}>
+                        <Text style={styles.clearButtonText}>Clear</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+            
+            <View style={styles.searchContainer}>
+                <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search by Order ID or Placed By Name..."
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                />
+            </View>
 
             {loading ? <ActivityIndicator size="large" style={{ flex: 1 }} /> : (
                 <FlatList
-                    data={orders}
+                    data={filteredOrders}
                     renderItem={renderItem}
                     keyExtractor={(item) => item.id}
-                    ListEmptyComponent={<Text style={styles.emptyText}>No orders found for this filter.</Text>}
+                    ListEmptyComponent={<Text style={styles.emptyText}>No orders found for the selected filters.</Text>}
                 />
             )}
         </View>
     );
 };
 
-// --- Add the new filter styles ---
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f8f9fa' },
-    filterContainer: {
-        paddingVertical: 10,
-        backgroundColor: 'white',
-        borderBottomWidth: 1,
-        borderBottomColor: '#eee',
-        paddingLeft: 10,
-    },
-    filterTab: {
-        paddingHorizontal: 20,
-        paddingVertical: 8,
-        borderRadius: 20,
-        marginHorizontal: 5,
-        borderWidth: 1,
-        borderColor: '#40916c',
-    },
-    selectedTab: {
-        backgroundColor: '#40916c',
-    },
-    filterText: {
-        color: '#40916c',
-        fontSize: 14,
-    },
-    selectedTabText: {
-        color: '#fff',
-        fontWeight: 'bold',
-    },
-    // --- Existing styles ---
+    filterContainer: { paddingVertical: 10, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#eee', paddingLeft: 10 },
+    filterTab: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, marginHorizontal: 5, borderWidth: 1, borderColor: '#40916c' },
+    selectedTab: { backgroundColor: '#40916c' },
+    filterText: { color: '#40916c', fontSize: 14 },
+    selectedTabText: { color: '#fff', fontWeight: 'bold' },
+    dateFilterContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', padding: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+    dateBox: { flex: 1, alignItems: 'center', padding: 8, borderWidth: 1, borderColor: '#ddd', borderRadius: 5, marginHorizontal: 5 },
+    dateLabel: { fontSize: 12, color: '#666' },
+    dateText: { fontSize: 14, fontWeight: 'bold', color: '#333' },
+    clearButton: { padding: 8 },
+    clearButtonText: { color: '#d9534f', fontSize: 14, fontWeight: 'bold' },
+    searchContainer: { paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+    searchInput: { height: 40, backgroundColor: '#f0f4f7', borderRadius: 8, paddingHorizontal: 15, fontSize: 16 },
     orderItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
     orderId: { fontSize: 16, fontWeight: 'bold' },
     orderDate: { fontSize: 14, color: '#666', marginTop: 4 },

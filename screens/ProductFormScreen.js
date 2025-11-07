@@ -13,8 +13,9 @@ const ProductFormScreen = ({ route, navigation }) => {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [images, setImages] = useState([]); 
-    const [variants, setVariants] = useState([{ size: '', pieces: '', price: '' }]);
-    const [isActive, setIsActive] = useState(true); // <-- FIX #1: Added state for active status
+    // --- CHANGE #1: Added 'stock' to the variant structure ---
+    const [variants, setVariants] = useState([{ size: '', pieces: '', price: '', stock: '' }]);
+    const [isActive, setIsActive] = useState(true);
     const [uploading, setUploading] = useState(false);
 
     useEffect(() => {
@@ -23,10 +24,19 @@ const ProductFormScreen = ({ route, navigation }) => {
             setName(product.name);
             setDescription(product.description);
             setImages(product.imageUrls || []);
-            setVariants(product.variants || [{ size: '', pieces: '', price: '' }]);
-            // <-- FIX #2: Set the switch state when editing an existing product
-            // If isActive is not defined on an old product, it defaults to true.
             setIsActive(product.isActive !== undefined ? product.isActive : true);
+            
+            // --- CHANGE #2: Ensure all variant fields are converted to strings for inputs ---
+            if (product.variants && product.variants.length > 0) {
+                setVariants(product.variants.map(v => ({
+                    size: v.size || '',
+                    pieces: v.pieces?.toString() || '',
+                    price: v.price?.toString() || '',
+                    stock: v.stock?.toString() || '' // Convert stock to string
+                })));
+            } else {
+                 setVariants([{ size: '', pieces: '', price: '', stock: '' }]);
+            }
         }
     }, [isEditing]);
     
@@ -54,7 +64,8 @@ const ProductFormScreen = ({ route, navigation }) => {
     };
 
     const addVariant = () => {
-        setVariants([...variants, { size: '', pieces: '', price: '' }]);
+        // --- CHANGE #3: Add 'stock' to new variants ---
+        setVariants([...variants, { size: '', pieces: '', price: '', stock: '' }]);
     };
     
     const removeVariant = (index) => {
@@ -73,8 +84,9 @@ const ProductFormScreen = ({ route, navigation }) => {
     };
 
     const handleSaveProduct = async () => {
-        if (!name || !description || variants.some(v => !v.size || !v.pieces || !v.price)) {
-            Alert.alert("Error", "Please fill in product name, description, and all variant fields.");
+        // --- CHANGE #4: Added 'stock' to the validation ---
+        if (!name || !description || variants.some(v => !v.size || !v.pieces || !v.price || !v.stock)) {
+            Alert.alert("Error", "Please fill in product name, description, and ALL variant fields (Size, Pieces, Price, Stock).");
             return;
         }
         if (images.length === 0) {
@@ -97,12 +109,14 @@ const ProductFormScreen = ({ route, navigation }) => {
                 name,
                 description,
                 imageUrls,
+                // --- CHANGE #5: Save 'stock' as a number ---
                 variants: variants.map(v => ({
-                    ...v,
+                    size: v.size,
                     pieces: parseInt(v.pieces, 10),
-                    price: parseFloat(v.price)
+                    price: parseFloat(v.price),
+                    stock: parseInt(v.stock, 10) // Save stock as an integer
                 })),
-                isActive, // <-- FIX #3: Save the active status to Firestore
+                isActive,
                 updatedAt: serverTimestamp(),
                 ...( !isEditing && { createdAt: serverTimestamp() } )
             }, { merge: true });
@@ -143,10 +157,12 @@ const ProductFormScreen = ({ route, navigation }) => {
 
                 <Text style={styles.subHeader}>Variants</Text>
                 {variants.map((variant, index) => (
+                    // --- CHANGE #6: Added the TextInput for Stock ---
                     <View key={index} style={styles.variantContainer}>
-                        <TextInput style={styles.variantInput} placeholder="Size (e.g., XL)" value={variant.size} onChangeText={(text) => handleVariantChange(index, 'size', text)} />
+                        <TextInput style={styles.variantInput} placeholder="Size" value={variant.size} onChangeText={(text) => handleVariantChange(index, 'size', text)} />
                         <TextInput style={styles.variantInput} placeholder="Pieces" value={variant.pieces} onChangeText={(text) => handleVariantChange(index, 'pieces', text)} keyboardType="number-pad" />
                         <TextInput style={styles.variantInput} placeholder="Price (₹)" value={variant.price} onChangeText={(text) => handleVariantChange(index, 'price', text)} keyboardType="numeric" />
+                        <TextInput style={styles.variantInput} placeholder="Stock" value={variant.stock} onChangeText={(text) => handleVariantChange(index, 'stock', text)} keyboardType="number-pad" />
                         {variants.length > 1 && <TouchableOpacity onPress={() => removeVariant(index)}><Text style={styles.removeText}>Remove</Text></TouchableOpacity>}
                     </View>
                 ))}
@@ -154,7 +170,6 @@ const ProductFormScreen = ({ route, navigation }) => {
                     <Text style={styles.addButtonText}>+ Add Another Variant</Text>
                 </TouchableOpacity>
                 
-                {/* <-- FIX #4: Added the UI Switch for active status --> */}
                 <View style={styles.switchContainer}>
                     <Text style={styles.label}>Product is Active</Text>
                     <Switch value={isActive} onValueChange={setIsActive} trackColor={{ false: "#767577", true: "#40916c" }} thumbColor={"#f4f3f4"}/>
@@ -180,12 +195,12 @@ const styles = StyleSheet.create({
     imagePreview: { width: 80, height: 80, borderRadius: 8, marginRight: 10, marginBottom: 10, borderWidth: 1, borderColor: '#ddd' },
     imagePickerButton: { padding: 10, backgroundColor: '#e9ecef', borderRadius: 8, alignSelf: 'flex-start' },
     imagePickerText: { color: '#495057' },
-    variantContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: '#ddd', padding: 10, borderRadius: 8 },
-    variantInput: { flex: 1, height: 40, borderColor: '#ccc', borderWidth: 1, borderRadius: 5, paddingHorizontal: 8, marginRight: 5 },
-    removeText: { color: 'red' },
+    // --- CHANGE #7: Adjusted variantContainer and variantInput for the new field ---
+    variantContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+    variantInput: { flex: 1, height: 40, borderColor: '#ccc', borderWidth: 1, borderRadius: 5, paddingHorizontal: 8, marginRight: 5, fontSize: 12 },
+    removeText: { color: 'red', marginLeft: 5 },
     addButton: { padding: 10 },
     addButtonText: { color: '#007AFF', fontWeight: 'bold' },
-    // Added style for the Switch
     switchContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 20, padding: 10, backgroundColor: '#f0f4f7', borderRadius: 8 },
 });
 

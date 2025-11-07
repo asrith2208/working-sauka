@@ -13,7 +13,7 @@ const DistributorDashboard = ({ navigation }) => {
             const currentUser = auth.currentUser;
             if (!currentUser) return;
 
-            // Query 1: Incoming orders from medical stores to be fulfilled
+            // Query 1: Incoming orders from medical stores to be fulfilled (Active orders)
             const incomingQuery = query(collection(db, 'orders'), where("fulfilledBy", "==", currentUser.uid), where("status", "in", ["Pending", "Shipped"]));
             
             // Query 2: Orders placed by this distributor to the admin
@@ -57,9 +57,16 @@ const DistributorDashboard = ({ navigation }) => {
             <TouchableOpacity style={styles.menuButton} onPress={() => navigation.navigate('AddMedicalStore')}>
                 <Text style={styles.menuButtonText}>Add New Medical Store</Text>
             </TouchableOpacity>
+
+            {/* --- NEW BUTTON ADDED HERE --- */}
+            <TouchableOpacity style={styles.menuButton} onPress={() => navigation.navigate('DistributorStoreList')}>
+                <Text style={styles.menuButtonText}>My Medical Stores</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity style={styles.menuButton} onPress={() => navigation.navigate('UserProductList')}>
                 <Text style={styles.menuButtonText}>Place New Order</Text>
             </TouchableOpacity>
+            
             <TouchableOpacity style={styles.menuButton} onPress={() => navigation.navigate('OrderList', { role: 'distributor' })}>
                 <Text style={styles.menuButtonText}>View All Orders</Text>
             </TouchableOpacity>
@@ -72,7 +79,7 @@ const DistributorDashboard = ({ navigation }) => {
         </View>
     );
 };
-// Use the same styles as MedicalStoreDashboard
+
 const styles = StyleSheet.create({
     container: { flex: 1, alignItems: 'center', padding: 20, backgroundColor: '#f8f9fa' },
     title: { fontSize: 28, fontWeight: 'bold', marginBottom: 30, color: '#2d6a4f' },
@@ -86,6 +93,5 @@ const styles = StyleSheet.create({
     logoutButton: { backgroundColor: '#d9534f', padding: 15, borderRadius: 10, alignItems: 'center' },
     logoutButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
 });
-
 
 export default DistributorDashboard;

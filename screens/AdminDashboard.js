@@ -10,18 +10,20 @@ const AdminDashboard = ({ navigation }) => {
 
     useFocusEffect(
         React.useCallback(() => {
-            // Query for all orders (to calculate sales from completed ones) and filter for pending
+            // -- LOGIC FIX APPLIED HERE --
             const q = query(collection(db, 'orders'));
-
+            
             const unsubscribe = onSnapshot(q, (querySnapshot) => {
                 let pendingCount = 0;
                 let sales = 0;
                 querySnapshot.forEach((doc) => {
                     const order = doc.data();
+                    // Count pending orders that the Admin needs to fulfill
                     if (order.status.toLowerCase() === 'pending' && order.fulfilledBy === 'admin') {
                         pendingCount++;
                     }
-                    if (order.status.toLowerCase() === 'completed') {
+                    // Calculate sales ONLY from completed orders placed by Distributors
+                    if (order.status.toLowerCase() === 'completed' && order.placedBy.role === 'distributor') {
                         sales += order.totalAmount;
                     }
                 });
@@ -55,13 +57,16 @@ const AdminDashboard = ({ navigation }) => {
             <TouchableOpacity style={styles.menuButton} onPress={() => navigation.navigate('ProductList')}>
                 <Text style={styles.menuButtonText}>Manage Products</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.menuButton} onPress={() => navigation.navigate('AddDistributor')}>
-                <Text style={styles.menuButtonText}>Manage Distributors</Text>
+
+            {/* This button now correctly navigates to the new performance list screen */}
+            <TouchableOpacity style={styles.menuButton} onPress={() => navigation.navigate('AdminDistributorList')}>
+                <Text style={styles.menuButtonText}>Distributor Performance</Text>
             </TouchableOpacity>
+            
             <TouchableOpacity style={styles.menuButton} onPress={() => navigation.navigate('OrderList', { role: 'admin' })}>
                 <Text style={styles.menuButtonText}>View All Orders</Text>
             </TouchableOpacity>
-
+            
             <View style={styles.logoutButtonContainer}>
                 <TouchableOpacity style={styles.logoutButton} onPress={() => auth.signOut()}>
                     <Text style={styles.logoutButtonText}>Logout</Text>
@@ -70,7 +75,7 @@ const AdminDashboard = ({ navigation }) => {
         </View>
     );
 };
-// Use the same styles
+
 const styles = StyleSheet.create({
     container: { flex: 1, alignItems: 'center', padding: 20, backgroundColor: '#f8f9fa' },
     title: { fontSize: 28, fontWeight: 'bold', marginBottom: 30, color: '#2d6a4f' },
@@ -84,6 +89,5 @@ const styles = StyleSheet.create({
     logoutButton: { backgroundColor: '#d9534f', padding: 15, borderRadius: 10, alignItems: 'center' },
     logoutButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
 });
-
 
 export default AdminDashboard;

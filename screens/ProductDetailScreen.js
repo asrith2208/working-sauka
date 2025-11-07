@@ -1,0 +1,97 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, TextInput, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
+
+const ProductDetailScreen = ({ route, navigation }) => {
+  const { productId } = route.params;
+  const [product, setProduct] = useState(null);
+  const [quantities, setQuantities] = useState({}); // e.g., { 'XL': 1, 'XXL': 0 }
+
+  useEffect(() => {
+    const fetchProduct = async () => {
+      const docRef = doc(db, 'products', productId);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        setProduct(docSnap.data());
+      }
+    };
+    fetchProduct();
+  }, [productId]);
+
+  const handleQuantityChange = (size, quantity) => {
+    const numQuantity = parseInt(quantity, 10) || 0;
+    setQuantities({ ...quantities, [size]: numQuantity });
+  };
+
+  const handlePlaceOrder = () => {
+    const orderItems = product.variants
+      .filter(variant => quantities[variant.size] && quantities[variant.size] > 0)
+      .map(variant => ({
+        ...variant,
+        quantity: quantities[variant.size],
+        totalPrice: quantities[variant.size] * variant.price,
+      }));
+
+    if (orderItems.length === 0) {
+      Alert.alert("No items selected", "Please enter a quantity for at least one variant.");
+      return;
+    }
+
+    const orderDetails = {
+      product: {
+        id: productId,
+        name: product.name,
+        imageUrl: product.imageUrls[0],
+      },
+      items: orderItems,
+    };
+    navigation.navigate('OrderSummary', { orderDetails });
+  };
+
+  if (!product) {
+    return <ActivityIndicator size="large" style={{ flex: 1, justifyContent: 'center' }} />;
+  }
+
+  return (
+    <ScrollView style={styles.container}>
+      <Image source={{ uri: product.imageUrls[0] }} style={styles.image} />
+      <View style={styles.detailsContainer}>
+        <Text style={styles.name}>{product.name}</Text>
+        <Text style={styles.description}>{product.description}</Text>
+        <Text style={styles.variantHeader}>Select Quantities</Text>
+        {product.variants.map((variant, index) => (
+          <View key={index} style={styles.variantRow}>
+            <Text style={styles.variantText}>{variant.size} ({variant.pieces} pcs)</Text>
+            <Text style={styles.variantText}>₹{variant.price.toFixed(2)}</Text>
+            <TextInput
+              style={styles.quantityInput}
+              keyboardType="number-pad"
+              placeholder="0"
+              onChangeText={(text) => handleQuantityChange(variant.size, text)}
+            />
+          </View>
+        ))}
+      </View>
+      <TouchableOpacity style={styles.button} onPress={handlePlaceOrder}>
+        <Text style={styles.buttonText}>Review Order</Text>
+      </TouchableOpacity>
+    </ScrollView>
+  );
+};
+
+const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: '#fff' },
+    image: { width: '100%', height: 250 },
+    detailsContainer: { padding: 20 },
+    name: { fontSize: 24, fontWeight: 'bold', marginBottom: 10 },
+    description: { fontSize: 16, color: '#666', lineHeight: 24, marginBottom: 20 },
+    variantHeader: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 15 },
+    variantRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
+    variantText: { fontSize: 16, flex: 1 },
+    quantityInput: { borderWidth: 1, borderColor: '#ccc', borderRadius: 5, width: 60, height: 40, textAlign: 'center', fontSize: 16 },
+    button: { margin: 20, height: 50, backgroundColor: '#40916c', justifyContent: 'center', alignItems: 'center', borderRadius: 8 },
+    buttonText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' }
+});
+
+export default ProductDetailScreen;

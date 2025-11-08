@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, SafeAreaView, StatusBar, Image } from 'react-native';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { doc, getDoc, setDoc, serverTimestamp, collection } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import { globalStyles, COLORS, FONTS, SPACING } from '../styles/globalStyles';
 
 const OrderSummaryScreen = ({ route, navigation }) => {
     const { orderDetails } = route.params;
     const [currentUserData, setCurrentUserData] = useState(null);
     const [submitting, setSubmitting] = useState(false);
+    const [localOrderId, setLocalOrderId] = useState(null);
 
     useEffect(() => {
         const fetchUserData = async () => {
@@ -15,134 +17,192 @@ const OrderSummaryScreen = ({ route, navigation }) => {
             const docSnap = await getDoc(docRef);
             if (docSnap.exists()) {
                 setCurrentUserData(docSnap.data());
+            } else {
+                Alert.alert("Error", "Could not find user data.");
             }
         };
         fetchUserData();
 
-        // This effect listens for the payment result coming back from the PaymentScreen WebView
-        if (route.params?.paymentResult) {
-            const result = route.params.paymentResult;
-            if (result.status === 'success') {
-                // Use a flag to prevent this from running multiple times
-                if (!submitting) {
-                    Alert.alert('Payment Successful', `Payment ID: ${result.paymentId}`);
-                    createOrderInFirestore(result.paymentId);
-                }
+        if (route.params?.paymentResult && localOrderId) {
+            const { status, paymentId } = route.params.paymentResult;
+            if (status === 'success' && !submitting) {
+                updateOrderAfterPayment(paymentId);
             }
         }
-    }, [route.params?.paymentResult]);
+    }, [route.params?.paymentResult, localOrderId]);
 
     const totalAmount = orderDetails.items.reduce((sum, item) => sum + item.totalPrice, 0);
 
     const handleProceedToPayment = async () => {
         if (!currentUserData) {
-            Alert.alert("Error", "Could not verify user data. Please try again.");
+            Alert.alert("Error", "Still fetching your data. Please wait a moment.");
             return;
         }
         setSubmitting(true);
+
         try {
-            // Get a reference to the Cloud Functions
             const functions = getFunctions();
-            // Get a reference to the specific function we deployed
             const createRazorpayOrder = httpsCallable(functions, 'createRazorpayOrder');
+            const response = await createRazorpayOrder({ amount: totalAmount * 100, currency: "INR" });
             
-            // Call the function with the required parameters
-            const response = await createRazorpayOrder({
-                amount: totalAmount * 100, // amount in paise
-                currency: "INR",
+            const { orderId: razorpayOrderId } = response.data;
+            if (!razorpayOrderId) throw new Error("Razorpay order ID not returned.");
+
+            const newOrderRef = doc(collection(db, 'orders'));
+            setLocalOrderId(newOrderRef.id);
+
+            await setDoc(newOrderRef, {
+                orderId: newOrderRef.id,
+                razorpayOrderId,
+                placedBy: { uid: currentUserData.uid, name: currentUserData.name, role: currentUserData.role },
+                fulfilledBy: currentUserData.role === 'medical_store' ? currentUserData.mapped_to_distributor : 'admin',
+                items: orderDetails.items,
+                product: orderDetails.product,
+                totalAmount,
+                status: 'Pending Payment',
+                paymentStatus: 'Unpaid',
+                createdAt: serverTimestamp(),
             });
 
-            const { orderId } = response.data;
+            navigation.navigate('Payment', {
+                razorpayOrderId,
+                orderDetails: {
+                    ...orderDetails,
+                    totalAmount,
+                    userName: currentUserData.name,
+                    userEmail: currentUserData.email,
+                    userPhone: currentUserData.phone,
+                }
+            });
 
-            if (orderId) {
-                // If we get an orderId back, navigate to the Payment WebView screen
-                navigation.navigate('Payment', {
-                    razorpayOrderId: orderId,
-                    orderDetails: {
-                        ...orderDetails,
-                        totalAmount: totalAmount,
-                        userName: currentUserData.name,
-                        userEmail: currentUserData.email,
-                        userPhone: currentUserData.phone,
-                    }
-                });
-            } else {
-                throw new Error("Razorpay orderId was not returned from the cloud function.");
-            }
         } catch (error) {
-            console.error("Error creating Razorpay order:", error);
-            Alert.alert("Error", "Could not connect to the payment gateway. Please try again.");
+            console.error("Error during payment process:", error);
+            Alert.alert("Payment Error", "Could not connect to the payment gateway. Please try again later.");
         } finally {
             setSubmitting(false);
         }
     };
 
-    const createOrderInFirestore = async (paymentId) => {
-        setSubmitting(true); // Prevent multiple submissions
+    const updateOrderAfterPayment = async (paymentId) => {
+        setSubmitting(true);
         try {
-            const newOrderRef = doc(collection(db, 'orders'));
-            let fulfilledBy = 'admin';
-            if (currentUserData.role === 'medical_store') {
-                fulfilledBy = currentUserData.mapped_to_distributor;
-            }
-
-            await setDoc(newOrderRef, {
-                orderId: newOrderRef.id,
-                placedBy: { uid: currentUserData.uid, name: currentUserData.name, role: currentUserData.role },
-                fulfilledBy,
-                items: orderDetails.items,
-                product: orderDetails.product,
-                totalAmount,
-                status: 'Pending',
+            const orderRef = doc(db, "orders", localOrderId);
+            await updateDoc(orderRef, {
+                status: 'Paid', 
                 paymentStatus: 'Paid',
-                paymentId: paymentId,
-                createdAt: serverTimestamp(),
+                paymentId: paymentId, 
             });
-
-            navigation.popToTop(); // Go back to the user's main dashboard
-
+            Alert.alert('Payment Successful', `Your order has been placed successfully! Payment ID: ${paymentId}` );
+            navigation.popToTop();
         } catch (error) {
-            console.error("Error creating order in Firestore:", error);
-            Alert.alert("Critical Error", "Your payment was successful, but we failed to record your order. Please contact support immediately.");
+            console.error("Critical Error:", error);
+            Alert.alert("Critical Error", "Your payment was successful, but we failed to update your order. Please contact support immediately.");
         } finally {
             setSubmitting(false);
         }
     };
 
     return (
-        <ScrollView style={styles.container}>
-            <Text style={styles.header}>Order Summary</Text>
-            <View style={styles.card}>
-                <Text style={styles.productName}>{orderDetails.product.name}</Text>
-                {orderDetails.items.map((item, index) => (
-                    <View key={index} style={styles.itemRow}>
-                        <Text style={styles.itemText}>{item.quantity} x {item.size} ({item.pieces} pcs)</Text>
-                        <Text style={styles.itemText}>₹{item.totalPrice.toFixed(2)}</Text>
-                    </View>
-                ))}
-                <View style={styles.totalRow}>
-                    <Text style={styles.totalText}>Total Amount</Text>
-                    <Text style={styles.totalText}>₹{totalAmount.toFixed(2)}</Text>
+        <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.neutralGray }}>
+            <StatusBar barStyle="dark-content" backgroundColor={COLORS.neutralGray} />
+            <ScrollView contentContainerStyle={styles.container}>
+                <Text style={globalStyles.h2}>Review Your Order</Text>
+
+                <View style={[globalStyles.card, styles.summaryCard]}>
+                  <View style={styles.cardHeader}>
+                    <Image source={{ uri: orderDetails.product.imageUrl }} style={styles.productImage} />
+                    <Text style={styles.productName}>{orderDetails.product.name}</Text>
+                  </View>
+
+                  {orderDetails.items.map((item, index) => (
+                      <View key={index} style={styles.itemRow}>
+                          <Text style={styles.itemText}>{item.quantity} x {item.size} ({item.pieces} pcs)</Text>
+                          <Text style={styles.itemText}>₹{item.totalPrice.toFixed(2)}</Text>
+                      </View>
+                  ))}
+
+                  <View style={styles.separator} />
+
+                  <View style={styles.totalRow}>
+                      <Text style={styles.totalText}>Total Payable</Text>
+                      <Text style={styles.totalAmount}>₹{totalAmount.toFixed(2)}</Text>
+                  </View>
                 </View>
+
+            </ScrollView>
+            <View style={styles.footer}>
+                <TouchableOpacity style={globalStyles.buttonPrimary} onPress={handleProceedToPayment} disabled={submitting || !currentUserData}>
+                    {submitting ? (
+                        <ActivityIndicator color={COLORS.white} />
+                    ) : (
+                        <Text style={globalStyles.buttonPrimaryText}>Proceed to Payment</Text>
+                    )}
+                </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.button} onPress={handleProceedToPayment} disabled={submitting}>
-                <Text style={styles.buttonText}>{submitting ? 'Connecting...' : 'Proceed to Payment'}</Text>
-            </TouchableOpacity>
-        </ScrollView>
+        </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 20, backgroundColor: '#f8f9fa' },
-    header: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, color: '#2d6a4f' },
-    card: { backgroundColor: '#fff', borderRadius: 8, padding: 20, marginBottom: 20 },
-    productName: { fontSize: 18, fontWeight: '600', borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 10, marginBottom: 10 },
-    itemRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
-    itemText: { fontSize: 16 },
-    totalRow: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 10, marginTop: 10 },
-    totalText: { fontSize: 18, fontWeight: 'bold' },
-    button: { height: 50, backgroundColor: '#5cb85c', justifyContent: 'center', alignItems: 'center', borderRadius: 8 },
-    buttonText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' }
+    container: { 
+        padding: SPACING.md,
+        paddingBottom: SPACING.xl, // Extra padding for footer space
+    },
+    summaryCard: {
+      marginTop: SPACING.lg,
+    },
+    cardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingBottom: SPACING.md,
+      marginBottom: SPACING.md,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.neutralGray2,
+    },
+    productImage: {
+      width: 50,
+      height: 50,
+      borderRadius: 8,
+      marginRight: SPACING.md,
+    },
+    productName: { 
+      ...FONTS.h3,
+      flex: 1,
+    },
+    itemRow: { 
+      flexDirection: 'row', 
+      justifyContent: 'space-between', 
+      paddingVertical: SPACING.sm,
+    },
+    itemText: { 
+      ...FONTS.body,
+      color: COLORS.textSecondary
+    },
+    separator: {
+      height: 1,
+      backgroundColor: COLORS.neutralGray2,
+      marginVertical: SPACING.md,
+    },
+    totalRow: { 
+      flexDirection: 'row', 
+      justifyContent: 'space-between', 
+      alignItems: 'center',
+    },
+    totalText: { 
+      ...FONTS.body,
+      fontSize: 18,
+      fontWeight: '600',
+    },
+    totalAmount: {
+      ...FONTS.h2,
+      color: COLORS.primary
+    },
+    footer: {
+        padding: SPACING.md,
+        borderTopWidth: 1,
+        borderTopColor: COLORS.neutralGray2,
+        backgroundColor: COLORS.white,
+    },
 });
 
 export default OrderSummaryScreen;

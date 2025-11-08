@@ -1,133 +1,172 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TextInput, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIndicator, Alert, SafeAreaView, StatusBar } from 'react-native';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { globalStyles, COLORS, FONTS, SPACING } from '../styles/globalStyles';
+
+const QuantityStepper = ({ value, onIncrement, onDecrement, stock }) => (
+  <View style={styles.stepperContainer}>
+    <TouchableOpacity onPress={onDecrement} style={styles.stepperButton} disabled={value <= 0}>
+      <Text style={styles.stepperButtonText}>-</Text>
+    </TouchableOpacity>
+    <Text style={styles.stepperValue}>{value}</Text>
+    <TouchableOpacity onPress={onIncrement} style={styles.stepperButton} disabled={value >= stock}>
+      <Text style={styles.stepperButtonText}>+</Text>
+    </TouchableOpacity>
+  </View>
+);
 
 const ProductDetailScreen = ({ route, navigation }) => {
   const { productId } = route.params;
   const [product, setProduct] = useState(null);
-  const [quantities, setQuantities] = useState({}); // e.g., { 'XL': 5, 'XXL': 0 }
-
+  const [quantities, setQuantities] = useState({});
+  
   useEffect(() => {
     const fetchProduct = async () => {
       const docRef = doc(db, 'products', productId);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
-        setProduct(docSnap.data());
+        const productData = docSnap.data();
+        setProduct(productData);
+        // Initialize quantities
+        const initialQuantities = {};
+        productData.variants.forEach(v => { initialQuantities[v.size] = 0; });
+        setQuantities(initialQuantities);
       }
     };
     fetchProduct();
   }, [productId]);
 
-  // Updated handleQuantityChange to include stock validation
-  const handleQuantityChange = (size, quantity, availableStock) => {
-    const numQuantity = parseInt(quantity, 10) || 0;
-    
-    // Validate against available stock
-    if (numQuantity > availableStock) {
-        Alert.alert("Stock limit exceeded", `You can only order up to ${availableStock} units for size ${size}.`);
-        // We update the state with the max available stock instead of the user's input
-        setQuantities({ ...quantities, [size]: availableStock }); 
+  const handleQuantityChange = (size, change) => {
+    const currentVariant = product.variants.find(v => v.size === size);
+    const currentQty = quantities[size] || 0;
+    const newQty = currentQty + change;
+
+    if (newQty < 0) return;
+    if (newQty > currentVariant.stock) {
+        Alert.alert("Stock limit reached", `You can only order up to ${currentVariant.stock} units for size ${size}.`);
+        setQuantities({ ...quantities, [size]: currentVariant.stock });
         return;
     }
-    
-    setQuantities({ ...quantities, [size]: numQuantity });
+    setQuantities({ ...quantities, [size]: newQty });
   };
 
   const handlePlaceOrder = () => {
     const orderItems = product.variants
-      .filter(variant => quantities[variant.size] && quantities[variant.size] > 0)
-      .map(variant => {
-        // Final check to ensure order quantity doesn't exceed stock
-        if (quantities[variant.size] > variant.stock) {
-            Alert.alert("Error", `Stock for size ${variant.size} has changed. Please review your order.`);
-            return null; // This will be filtered out
-        }
-        return {
+      .filter(variant => quantities[variant.size] > 0)
+      .map(variant => ({
           ...variant,
           quantity: quantities[variant.size],
           totalPrice: quantities[variant.size] * variant.price,
-        }
-      })
-      .filter(item => item !== null); // Remove any items that failed the final stock check
+      }));
 
     if (orderItems.length === 0) {
-      Alert.alert("No items selected", "Please enter a valid quantity for at least one variant.");
+      Alert.alert("No items selected", "Please add a quantity for at least one product variant.");
       return;
     }
 
     const orderDetails = {
-      product: {
-        id: productId,
-        name: product.name,
-        imageUrl: product.imageUrls[0],
-      },
+      product: { id: productId, name: product.name, imageUrl: product.imageUrls[0] },
       items: orderItems,
     };
     navigation.navigate('OrderSummary', { orderDetails });
   };
 
+  const totalItems = Object.values(quantities).reduce((acc, cur) => acc + cur, 0);
+
   if (!product) {
-    return <ActivityIndicator size="large" style={{ flex: 1, justifyContent: 'center' }} />;
+    return <View style={globalStyles.centered}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <Image source={{ uri: product.imageUrls[0] }} style={styles.image} />
-      <View style={styles.detailsContainer}>
-        <Text style={styles.name}>{product.name}</Text>
-        <Text style={styles.description}>{product.description}</Text>
-        <Text style={styles.variantHeader}>Select Quantities</Text>
-        
-        {/* Updated variant mapping to show stock and disable out-of-stock items */}
-        {product.variants.map((variant, index) => {
-            const isOutOfStock = !variant.stock || variant.stock <= 0;
-            return (
-                <View key={index} style={[styles.variantRow, isOutOfStock && styles.disabledRow]}>
-                    <View style={{flex: 1}}>
-                        <Text style={styles.variantText}>{variant.size} ({variant.pieces} pcs)</Text>
-                        {!isOutOfStock && <Text style={styles.stockText}>{variant.stock} units available</Text>}
-                    </View>
-                    <Text style={styles.variantText}>₹{variant.price.toFixed(2)}</Text>
-                    {isOutOfStock ? (
-                        <Text style={styles.outOfStockText}>Out of Stock</Text>
-                    ) : (
-                        <TextInput
-                            style={styles.quantityInput}
-                            keyboardType="number-pad"
-                            placeholder="0"
-                            // Use the state value for the text input to ensure it updates correctly on validation
-                            value={quantities[variant.size] ? String(quantities[variant.size]) : ''}
-                            onChangeText={(text) => handleQuantityChange(variant.size, text, variant.stock)}
-                        />
-                    )}
-                </View>
-            )
-        })}
-      </View>
-      <TouchableOpacity style={styles.button} onPress={handlePlaceOrder}>
-        <Text style={styles.buttonText}>Review Order</Text>
-      </TouchableOpacity>
-    </ScrollView>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.white }}>
+        <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
+        <ScrollView style={styles.container}>
+            <Image source={{ uri: product.imageUrls[0] }} style={styles.image} />
+            <View style={styles.detailsContainer}>
+                <Text style={globalStyles.h2}>{product.name}</Text>
+                <Text style={[globalStyles.body, { marginVertical: SPACING.md }]}>{product.description}</Text>
+
+                <Text style={styles.variantHeader}>Select Variants</Text>
+                
+                {product.variants.map((variant, index) => {
+                    const isOutOfStock = !variant.stock || variant.stock <= 0;
+                    return (
+                        <View key={index} style={[styles.variantRow, isOutOfStock && styles.disabledRow]}>
+                            <View style={styles.variantInfo}>
+                                <Text style={styles.variantSize}>{variant.size} ({variant.pieces} pcs)</Text>
+                                <Text style={styles.variantPrice}>₹{variant.price.toFixed(2)}</Text>
+                            </View>
+                            <View style={styles.variantActions}>
+                                {isOutOfStock ? (
+                                    <Text style={styles.outOfStockText}>Out of Stock</Text>
+                                ) : (
+                                  <>
+                                    <QuantityStepper 
+                                      value={quantities[variant.size] || 0}
+                                      onIncrement={() => handleQuantityChange(variant.size, 1)}
+                                      onDecrement={() => handleQuantityChange(variant.size, -1)}
+                                      stock={variant.stock}
+                                    />
+                                    <Text style={styles.stockText}>{variant.stock} left</Text>
+                                  </>
+                                )}
+                            </View>
+                        </View>
+                    )
+                })}
+            </View>
+        </ScrollView>
+        {totalItems > 0 && (
+            <View style={styles.footer}>
+                <TouchableOpacity style={globalStyles.buttonPrimary} onPress={handlePlaceOrder}>
+                    <Text style={globalStyles.buttonPrimaryText}>Review Order ({totalItems} items)</Text>
+                </TouchableOpacity>
+            </View>
+        )}
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#fff' },
-    image: { width: '100%', height: 250 },
-    detailsContainer: { padding: 20 },
-    name: { fontSize: 24, fontWeight: 'bold', marginBottom: 10 },
-    description: { fontSize: 16, color: '#666', lineHeight: 24, marginBottom: 20 },
-    variantHeader: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 15 },
-    variantRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
-    variantText: { fontSize: 16, flex: 1 },
-    quantityInput: { borderWidth: 1, borderColor: '#ccc', borderRadius: 5, width: 60, height: 40, textAlign: 'center', fontSize: 16 },
-    button: { margin: 20, height: 50, backgroundColor: '#40916c', justifyContent: 'center', alignItems: 'center', borderRadius: 8 },
-    buttonText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' },
-    // New styles for stock management
-    disabledRow: { backgroundColor: '#f8f9fa', opacity: 0.6 },
-    stockText: { fontSize: 12, color: 'green', marginTop: 2 },
-    outOfStockText: { color: 'red', fontWeight: 'bold', width: 80, textAlign: 'center' },
+  container: { flex: 1, backgroundColor: COLORS.white },
+  image: { width: '100%', height: 300 },
+  detailsContainer: { padding: SPACING.lg },
+  variantHeader: { ...FONTS.h3, marginTop: SPACING.lg, paddingBottom: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.neutralGray2 },
+  variantRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    paddingVertical: SPACING.md, 
+    borderBottomWidth: 1, 
+    borderBottomColor: COLORS.neutralGray2 
+  },
+  variantInfo: { flex: 1 },
+  variantSize: { ...FONTS.body, fontWeight: '600', fontSize: 18 },
+  variantPrice: { ...FONTS.body, color: COLORS.textSecondary, marginTop: SPACING.xs },
+  variantActions: { alignItems: 'flex-end' },
+  stockText: { ...FONTS.small, color: COLORS.success, marginTop: SPACING.xs },
+  disabledRow: { opacity: 0.5 },
+  outOfStockText: { ...FONTS.body, color: COLORS.error, fontWeight: '600' },
+  
+  // --- Stepper Styles ---
+  stepperContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.neutralGray, borderRadius: 20 },
+  stepperButton: { 
+    width: 40, 
+    height: 40, 
+    justifyContent: 'center',
+    alignItems: 'center', 
+  },
+  stepperButtonText: { fontSize: 20, fontWeight: 'bold', color: COLORS.primary },
+  stepperValue: { fontSize: 18, fontWeight: 'bold', color: COLORS.textPrimary, minWidth: 40, textAlign: 'center' },
+  
+  // -- Footer Button -- //
+  footer: {
+    padding: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.neutralGray2,
+    backgroundColor: COLORS.white,
+  },
 });
 
 export default ProductDetailScreen;

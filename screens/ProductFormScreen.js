@@ -12,8 +12,8 @@ const ProductFormScreen = ({ route, navigation }) => {
 
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
+    const [category, setCategory] = useState(''); // New state for category
     const [images, setImages] = useState([]); 
-    // --- CHANGE #1: Added 'stock' to the variant structure ---
     const [variants, setVariants] = useState([{ size: '', pieces: '', price: '', stock: '' }]);
     const [isActive, setIsActive] = useState(true);
     const [uploading, setUploading] = useState(false);
@@ -23,16 +23,16 @@ const ProductFormScreen = ({ route, navigation }) => {
             const product = route.params.product;
             setName(product.name);
             setDescription(product.description);
+            setCategory(product.category || ''); // Set category if it exists
             setImages(product.imageUrls || []);
             setIsActive(product.isActive !== undefined ? product.isActive : true);
             
-            // --- CHANGE #2: Ensure all variant fields are converted to strings for inputs ---
             if (product.variants && product.variants.length > 0) {
                 setVariants(product.variants.map(v => ({
                     size: v.size || '',
                     pieces: v.pieces?.toString() || '',
                     price: v.price?.toString() || '',
-                    stock: v.stock?.toString() || '' // Convert stock to string
+                    stock: v.stock?.toString() || ''
                 })));
             } else {
                  setVariants([{ size: '', pieces: '', price: '', stock: '' }]);
@@ -64,7 +64,6 @@ const ProductFormScreen = ({ route, navigation }) => {
     };
 
     const addVariant = () => {
-        // --- CHANGE #3: Add 'stock' to new variants ---
         setVariants([...variants, { size: '', pieces: '', price: '', stock: '' }]);
     };
     
@@ -77,16 +76,15 @@ const ProductFormScreen = ({ route, navigation }) => {
     const uploadImage = async (uri) => {
         const response = await fetch(uri);
         const blob = await response.blob();
-        const filename = `products/${uuidv4()}`; 
+        const filename = `products/${uuidv4()}`;
         const storageRef = ref(storage, filename);
         await uploadBytes(storageRef, blob);
         return await getDownloadURL(storageRef);
     };
 
     const handleSaveProduct = async () => {
-        // --- CHANGE #4: Added 'stock' to the validation ---
-        if (!name || !description || variants.some(v => !v.size || !v.pieces || !v.price || !v.stock)) {
-            Alert.alert("Error", "Please fill in product name, description, and ALL variant fields (Size, Pieces, Price, Stock).");
+        if (!name || !description || !category || variants.some(v => !v.size || !v.pieces || !v.price || !v.stock)) {
+            Alert.alert("Error", "Please fill in all fields: Name, Description, Category, and all Variant fields.");
             return;
         }
         if (images.length === 0) {
@@ -108,13 +106,13 @@ const ProductFormScreen = ({ route, navigation }) => {
             await setDoc(doc(db, "products", productId), {
                 name,
                 description,
+                category, // Save category
                 imageUrls,
-                // --- CHANGE #5: Save 'stock' as a number ---
                 variants: variants.map(v => ({
                     size: v.size,
                     pieces: parseInt(v.pieces, 10),
                     price: parseFloat(v.price),
-                    stock: parseInt(v.stock, 10) // Save stock as an integer
+                    stock: parseInt(v.stock, 10)
                 })),
                 isActive,
                 updatedAt: serverTimestamp(),
@@ -145,6 +143,9 @@ const ProductFormScreen = ({ route, navigation }) => {
                 <Text style={styles.label}>Description</Text>
                 <TextInput style={[styles.input, styles.textArea]} value={description} onChangeText={setDescription} multiline />
 
+                <Text style={styles.label}>Category</Text>
+                <TextInput style={styles.input} value={category} onChangeText={setCategory} placeholder="e.g., Pain Relief, Vitamins, etc."/>
+
                 <Text style={styles.label}>Product Images (up to 4)</Text>
                 <View style={styles.imageContainer}>
                     {images.map((uri, index) => (
@@ -157,7 +158,6 @@ const ProductFormScreen = ({ route, navigation }) => {
 
                 <Text style={styles.subHeader}>Variants</Text>
                 {variants.map((variant, index) => (
-                    // --- CHANGE #6: Added the TextInput for Stock ---
                     <View key={index} style={styles.variantContainer}>
                         <TextInput style={styles.variantInput} placeholder="Size" value={variant.size} onChangeText={(text) => handleVariantChange(index, 'size', text)} />
                         <TextInput style={styles.variantInput} placeholder="Pieces" value={variant.pieces} onChangeText={(text) => handleVariantChange(index, 'pieces', text)} keyboardType="number-pad" />
@@ -195,7 +195,6 @@ const styles = StyleSheet.create({
     imagePreview: { width: 80, height: 80, borderRadius: 8, marginRight: 10, marginBottom: 10, borderWidth: 1, borderColor: '#ddd' },
     imagePickerButton: { padding: 10, backgroundColor: '#e9ecef', borderRadius: 8, alignSelf: 'flex-start' },
     imagePickerText: { color: '#495057' },
-    // --- CHANGE #7: Adjusted variantContainer and variantInput for the new field ---
     variantContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
     variantInput: { flex: 1, height: 40, borderColor: '#ccc', borderWidth: 1, borderRadius: 5, paddingHorizontal: 8, marginRight: 5, fontSize: 12 },
     removeText: { color: 'red', marginLeft: 5 },

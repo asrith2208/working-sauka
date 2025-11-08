@@ -1,8 +1,22 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, SafeAreaView, StatusBar, TouchableOpacity } from 'react-native';
 import { auth, db } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { useFocusEffect } from '@react-navigation/native';
+import { globalStyles, COLORS, SPACING, FONTS } from '../styles/globalStyles';
+
+const StatCard = ({ title, value, loading, onPress }) => (
+    <TouchableOpacity style={styles.statCard} onPress={onPress} disabled={!onPress}>
+        {loading ? (
+            <ActivityIndicator size="small" color={COLORS.primary} />
+        ) : (
+            <>
+                <Text style={styles.statValue}>{value}</Text>
+                <Text style={styles.statLabel}>{title}</Text>
+            </>
+        )}
+    </TouchableOpacity>
+);
 
 const DistributorDashboard = ({ navigation }) => {
     const [stats, setStats] = useState({ incoming: 0, myOrders: 0 });
@@ -13,10 +27,7 @@ const DistributorDashboard = ({ navigation }) => {
             const currentUser = auth.currentUser;
             if (!currentUser) return;
 
-            // Query 1: Incoming orders from medical stores to be fulfilled (Active orders)
             const incomingQuery = query(collection(db, 'orders'), where("fulfilledBy", "==", currentUser.uid), where("status", "in", ["Pending", "Shipped"]));
-            
-            // Query 2: Orders placed by this distributor to the admin
             const myOrdersQuery = query(collection(db, 'orders'), where("placedBy.uid", "==", currentUser.uid));
             
             const unsubIncoming = onSnapshot(incomingQuery, (snapshot) => {
@@ -25,7 +36,7 @@ const DistributorDashboard = ({ navigation }) => {
 
             const unsubMyOrders = onSnapshot(myOrdersQuery, (snapshot) => {
                 setStats(prevStats => ({ ...prevStats, myOrders: snapshot.size }));
-                setLoading(false); // Stop loading after the second query
+                setLoading(false);
             });
 
             return () => {
@@ -36,62 +47,78 @@ const DistributorDashboard = ({ navigation }) => {
     );
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Distributor Dashboard</Text>
+        <SafeAreaView style={globalStyles.safeArea}>
+            <StatusBar barStyle="dark-content" backgroundColor={COLORS.neutralGray} />
+            <View style={styles.container}>
+                <Text style={globalStyles.h1}>Distributor Dashboard</Text>
+                
+                <View style={styles.statsContainer}>
+                    <StatCard 
+                        title="Incoming Orders" 
+                        value={stats.incoming}
+                        loading={loading} 
+                        onPress={() => navigation.navigate('Orders', { screen: 'Orders', params: { role: 'distributor' }})}
+                    />
+                    <StatCard 
+                        title="My Orders Placed"
+                        value={stats.myOrders}
+                        loading={loading} 
+                        onPress={() => navigation.navigate('Orders', { screen: 'Orders', params: { role: 'distributor' }})}
+                    />
+                </View>
 
-            <View style={styles.statsContainer}>
-                {loading ? <ActivityIndicator size="large" /> : (
-                    <>
-                        <View style={styles.statBox}>
-                            <Text style={styles.statNumber}>{stats.incoming}</Text>
-                            <Text style={styles.statLabel}>Incoming Orders</Text>
-                        </View>
-                        <View style={styles.statBox}>
-                            <Text style={styles.statNumber}>{stats.myOrders}</Text>
-                            <Text style={styles.statLabel}>My Orders Placed</Text>
-                        </View>
-                    </>
-                )}
+                 <View style={styles.quickActionsContainer}>
+                    <TouchableOpacity style={styles.quickActionButton} onPress={() => navigation.navigate('DistributorStoreList')}>
+                        <Text style={styles.quickActionButtonText}>My Medical Stores</Text>
+                    </TouchableOpacity>
+                     <TouchableOpacity style={styles.quickActionButton} onPress={() => navigation.navigate('AddMedicalStore')}>
+                        <Text style={styles.quickActionButtonText}>Add New Medical Store</Text>
+                    </TouchableOpacity>
+                </View>
+
             </View>
-
-            <TouchableOpacity style={styles.menuButton} onPress={() => navigation.navigate('AddMedicalStore')}>
-                <Text style={styles.menuButtonText}>Add New Medical Store</Text>
-            </TouchableOpacity>
-
-            {/* --- NEW BUTTON ADDED HERE --- */}
-            <TouchableOpacity style={styles.menuButton} onPress={() => navigation.navigate('DistributorStoreList')}>
-                <Text style={styles.menuButtonText}>My Medical Stores</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.menuButton} onPress={() => navigation.navigate('UserProductList')}>
-                <Text style={styles.menuButtonText}>Place New Order</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.menuButton} onPress={() => navigation.navigate('OrderList', { role: 'distributor' })}>
-                <Text style={styles.menuButtonText}>View All Orders</Text>
-            </TouchableOpacity>
-
-            <View style={styles.logoutButtonContainer}>
-                <TouchableOpacity style={styles.logoutButton} onPress={() => auth.signOut()}>
-                    <Text style={styles.logoutButtonText}>Logout</Text>
-                </TouchableOpacity>
-            </View>
-        </View>
+        </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, alignItems: 'center', padding: 20, backgroundColor: '#f8f9fa' },
-    title: { fontSize: 28, fontWeight: 'bold', marginBottom: 30, color: '#2d6a4f' },
-    statsContainer: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginBottom: 30 },
-    statBox: { backgroundColor: '#fff', padding: 20, borderRadius: 10, alignItems: 'center', width: '45%', elevation: 3, shadowColor: '#000' },
-    statNumber: { fontSize: 32, fontWeight: 'bold', color: '#40916c' },
-    statLabel: { fontSize: 16, color: '#666', marginTop: 5 },
-    menuButton: { width: '90%', padding: 15, backgroundColor: '#40916c', borderRadius: 10, alignItems: 'center', marginBottom: 15 },
-    menuButtonText: { color: '#ffffff', fontSize: 18, fontWeight: '600' },
-    logoutButtonContainer: { position: 'absolute', bottom: 40, width: '90%' },
-    logoutButton: { backgroundColor: '#d9534f', padding: 15, borderRadius: 10, alignItems: 'center' },
-    logoutButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
+    container: {
+        flex: 1,
+        padding: SPACING.md,
+        backgroundColor: COLORS.neutralGray,
+    },
+    statsContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: SPACING.lg,
+    },
+    statCard: {
+        ...globalStyles.card,
+        flex: 1,
+        marginHorizontal: SPACING.xs,
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: SPACING.md
+    },
+    statValue: {
+        ...FONTS.h2,
+        color: COLORS.primary,
+    },
+    statLabel: {
+        ...FONTS.body,
+        color: COLORS.textSecondary,
+        marginTop: SPACING.xs,
+    },
+    quickActionsContainer: {
+        marginTop: SPACING.lg,
+    },
+    quickActionButton: {
+        ...globalStyles.buttonSecondary,
+        marginBottom: SPACING.md,
+    },
+    quickActionButtonText: {
+        ...globalStyles.buttonSecondaryText,
+    }
 });
 
 export default DistributorDashboard;

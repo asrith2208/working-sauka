@@ -1,42 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { View, Platform, TouchableOpacity, Text, ActivityIndicator } from 'react-native';
+import { View, Platform, ActivityIndicator, Text } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { Ionicons } from '@expo/vector-icons';
 import 'react-native-get-random-values';
 
 // --- PUSH NOTIFICATION & DEVICE IMPORTS ---
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 
+// --- IMPORT NAVIGATORS ---
+import AdminTabNavigator from './navigation/AdminTabNavigator';
+import DistributorTabNavigator from './navigation/DistributorTabNavigator';
+import MedicalStoreTabNavigator from './navigation/MedicalStoreTabNavigator';
+
 // --- IMPORT ALL SCREENS ---
 import LoginScreen from './screens/LoginScreen';
-import AdminDashboard from './screens/AdminDashboard';
-import DistributorDashboard from './screens/DistributorDashboard';
-import MedicalStoreDashboard from './screens/MedicalStoreDashboard';
-import AddDistributorScreen from './screens/AddDistributorScreen';
-import AddMedicalStoreScreen from './screens/AddMedicalStoreScreen';
-import AdminDistributorListScreen from './screens/AdminDistributorListScreen';
-import DistributorDetailScreen from './screens/DistributorDetailScreen';
-import MedicalStoreDetailScreen from './screens/MedicalStoreDetailScreen';
-import DistributorStoreListScreen from './screens/DistributorStoreListScreen';
-import ProfileScreen from './screens/ProfileScreen';
-import EditProfileScreen from './screens/EditProfileScreen';
-import ChangePasswordScreen from './screens/ChangePasswordScreen';
-import ProductListScreen from './screens/ProductListScreen';
-import ProductFormScreen from './screens/ProductFormScreen';
-import UserProductListScreen from './screens/UserProductListScreen';
-import ProductDetailScreen from './screens/ProductDetailScreen';
-import OrderSummaryScreen from './screens/OrderSummaryScreen';
-import OrderListScreen from './screens/OrderListScreen';
-import OrderDetailScreen from './screens/OrderDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
-// --- PUSH NOTIFICATION SETUP WITH DETAILED LOGGING ---
+// --- PUSH NOTIFICATION SETUP ---
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -46,38 +31,24 @@ Notifications.setNotificationHandler({
 });
 
 async function registerForPushNotificationsAsync(userId) {
-  console.log("1. Starting push notification registration process...");
-  
-  if (!Device.isDevice) {
-    console.log("2. FAILED: Not a physical device. Stopping.");
-    return;
-  }
-  
-  console.log("2. SUCCESS: Running on a physical device.");
+  if (!Device.isDevice) return;
 
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
-  
-  console.log(`3. Current permission status is: ${existingStatus}`);
 
   if (existingStatus !== 'granted') {
-    console.log("4. Permission is not granted, requesting it now...");
     const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
-    console.log(`5. User responded to permission request. New status is: ${finalStatus}`);
-  }
-  
-  if (finalStatus !== 'granted') {
-    console.log("6. FAILED: User did not grant permission. Stopping.");
-    return;
   }
 
-  console.log("6. SUCCESS: Permission is granted.");
+  if (finalStatus !== 'granted') return;
 
   try {
     const token = (await Notifications.getExpoPushTokenAsync()).data;
-    console.log("7. SUCCESS: Got Expo Push Token:", token);
-
+    if (token && userId) {
+      const userDocRef = doc(db, 'users', userId);
+      await updateDoc(userDocRef, { expoPushToken: token });
+    }
     if (Platform.OS === 'android') {
       Notifications.setNotificationChannelAsync('default', {
         name: 'default',
@@ -86,17 +57,10 @@ async function registerForPushNotificationsAsync(userId) {
         lightColor: '#FF231F7C',
       });
     }
-    
-    if (token && userId) {
-      const userDocRef = doc(db, 'users', userId);
-      await updateDoc(userDocRef, { expoPushToken: token });
-      console.log('8. SUCCESS: Push token saved to Firestore.');
-    }
   } catch (e) {
-    console.error("7. FAILED: An error occurred while getting the push token.", e);
+    console.error("Failed to get push token", e);
   }
 }
-
 
 // --- NAVIGATORS ---
 function AuthStack() {
@@ -108,70 +72,19 @@ function AuthStack() {
 }
 
 function AppStack({ userRole }) {
-  const ProfileIcon = (navigation) => (
-    <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={{ marginRight: 15 }}>
-      <Ionicons name="person-circle-outline" size={28} color="#007AFF" />
-    </TouchableOpacity>
-  );
-
-  const commonScreens = (
-    <>
-      <Stack.Screen name="Profile" component={ProfileScreen} />
-      <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Edit Profile' }} />
-      <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ title: 'Change Password' }} />
-    </>
-  );
-
-  const userPlacingOrderScreens = (
-    <>
-      <Stack.Screen name="UserProductList" component={UserProductListScreen} options={{ title: 'Products' }} />
-      <Stack.Screen name="ProductDetail" component={ProductDetailScreen} options={{ title: 'Product Details' }} />
-      <Stack.Screen name="OrderSummary" component={OrderSummaryScreen} options={{ title: 'Order Summary' }} />
-    </>
-  );
-
-  const userOrderScreens = (
-    <>
-      <Stack.Screen name="OrderList" component={OrderListScreen} options={{ title: 'Orders' }} />
-      <Stack.Screen name="OrderDetail" component={OrderDetailScreen} options={{ title: 'Order Details' }} />
-    </>
-  );
-
-  return (
-    <Stack.Navigator>
-      {userRole === 'admin' && (
-        <>
-          <Stack.Screen name="AdminDashboard" component={AdminDashboard} options={({ navigation }) => ({ title: 'Admin Home', headerRight: () => ProfileIcon(navigation) })} />
-          <Stack.Screen name="AdminDistributorList" component={AdminDistributorListScreen} options={{ title: 'Distributor Performance' }} />
-          <Stack.Screen name="DistributorDetail" component={DistributorDetailScreen} options={({ route }) => ({ title: route.params.distributor.name })} />
-          <Stack.Screen name="MedicalStoreDetail" component={MedicalStoreDetailScreen} options={({ route }) => ({ title: route.params.medicalStore.name })} />
-          <Stack.Screen name="AddDistributor" component={AddDistributorScreen} options={{ title: 'Add Distributor' }} />
-          <Stack.Screen name="ProductList" component={ProductListScreen} options={({ navigation }) => ({ title: 'Manage Products', headerRight: () => (<TouchableOpacity onPress={() => navigation.navigate('ProductForm')}><Text style={{ color: '#007AFF', fontSize: 18 }}>Add</Text></TouchableOpacity>) })} />
-          <Stack.Screen name="ProductForm" component={ProductFormScreen} options={({ route }) => ({ title: route.params?.product ? 'Edit Product' : 'Add Product' })} />
-          {userOrderScreens}
-          {commonScreens}
-        </>
-      )}
-      {userRole === 'distributor' && (
-        <>
-          <Stack.Screen name="DistributorDashboard" component={DistributorDashboard} options={({ navigation }) => ({ title: 'Distributor Home', headerRight: () => ProfileIcon(navigation) })} />
-          <Stack.Screen name="DistributorStoreList" component={DistributorStoreListScreen} options={{ title: 'My Medical Stores' }} />
-          <Stack.Screen name="AddMedicalStore" component={AddMedicalStoreScreen} options={{ title: 'Add Medical Store' }} />
-          {userPlacingOrderScreens}
-          {userOrderScreens}
-          {commonScreens}
-        </>
-      )}
-      {userRole === 'medical_store' && (
-        <>
-          <Stack.Screen name="MedicalStoreDashboard" component={MedicalStoreDashboard} options={({ navigation }) => ({ title: 'Store Home', headerRight: () => ProfileIcon(navigation) })} />
-          {userPlacingOrderScreens}
-          {userOrderScreens}
-          {commonScreens}
-        </>
-      )}
-    </Stack.Navigator>
-  );
+    return (
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+            {userRole === 'admin' && (
+                <Stack.Screen name="AdminHome" component={AdminTabNavigator} />
+            )}
+            {userRole === 'distributor' && (
+                <Stack.Screen name="DistributorHome" component={DistributorTabNavigator} />
+            )}
+            {userRole === 'medical_store' && (
+                <Stack.Screen name="MedicalStoreHome" component={MedicalStoreTabNavigator} />
+            )}
+        </Stack.Navigator>
+    );
 }
 
 
@@ -193,7 +106,6 @@ export default function App() {
             setUser(authenticatedUser);
             await registerForPushNotificationsAsync(authenticatedUser.uid);
           } else {
-            console.error("No user document found for this user! Logging out.");
             auth.signOut();
           }
         } else {
@@ -201,7 +113,7 @@ export default function App() {
           setUserRole(null);
         }
       } catch (error) {
-        console.error("Error during authentication check:", error);
+        console.error("Auth error:", error);
       } finally {
         if (initializing) {
           setInitializing(false);
@@ -210,13 +122,13 @@ export default function App() {
     });
 
     return unsubscribe;
-  }, []);
+  }, [initializing]);
 
   if (initializing) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8f9fa' }}>
-        <ActivityIndicator size="large" color="#40916c" />
-        <Text style={{ marginTop: 10, color: '#666' }}>Initializing App...</Text>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" />
+        <Text style={{ marginTop: 10 }}>Initializing...</Text>
       </View>
     );
   }

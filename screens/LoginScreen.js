@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Platform } from 'react-native';
-import { signInWithEmailAndPassword, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
+// 1. Import the 'sendPasswordResetEmail' function
+import { signInWithEmailAndPassword, PhoneAuthProvider, signInWithCredential, sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../firebase';
 import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 
@@ -55,13 +56,32 @@ const LoginScreen = () => {
     }
   };
 
+  // 2. Add the handler function for the forgot password feature
+  const handleForgotPassword = () => {
+    if (!email) {
+      Alert.alert("Email Required", "Please enter your email address in the email field to reset your password.");
+      return;
+    }
+
+    sendPasswordResetEmail(auth, email)
+      .then(() => {
+        Alert.alert("Check Your Email", `A password reset link has been sent to ${email}. Please follow the instructions to reset your password.`);
+      })
+      .catch((error) => {
+        console.error("Forgot Password Error:", error);
+        if (error.code === 'auth/user-not-found') {
+          Alert.alert("Error", "No user found with this email address.");
+        } else {
+          Alert.alert("Error", "Could not send password reset email. Please try again.");
+        }
+      });
+  };
+
   return (
     <View style={styles.container}>
       <FirebaseRecaptchaVerifierModal
         ref={recaptchaVerifier}
         firebaseConfig={auth.config}
-        // Use this for invisible reCAPTCHA on web. For mobile, it's always invisible.
-        // On Expo Go, you'll see a web view to solve the challenge.
         attemptInvisibleVerification={Platform.OS !== 'web'}
       />
 
@@ -90,6 +110,11 @@ const LoginScreen = () => {
           <TextInput style={styles.input} placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
           <TouchableOpacity style={styles.button} onPress={handleLogin}>
             <Text style={styles.buttonText}>Login</Text>
+          </TouchableOpacity>
+
+          {/* 3. Add the "Forgot Password?" button UI */}
+          <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotPasswordButton}>
+            <Text style={styles.linkText}>Forgot Password?</Text>
           </TouchableOpacity>
         </>
       )}
@@ -120,7 +145,7 @@ const LoginScreen = () => {
   );
 };
 
-// Add new styles for the tabs and link
+// 4. Add the new style for the button
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#f0f4f7' },
   title: { fontSize: 32, fontWeight: 'bold', color: '#2d6a4f', marginBottom: 30 },
@@ -132,7 +157,12 @@ const styles = StyleSheet.create({
   input: { width: '100%', height: 50, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#b7e4c7', borderRadius: 8, paddingHorizontal: 15, marginBottom: 15, fontSize: 16 },
   button: { width: '100%', height: 50, backgroundColor: '#40916c', justifyContent: 'center', alignItems: 'center', borderRadius: 8, marginTop: 10 },
   buttonText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' },
-  linkText: { color: '#2d6a4f', marginTop: 20, fontSize: 16 }
+  linkText: { color: '#2d6a4f', fontSize: 16 },
+  forgotPasswordButton: {
+    alignSelf: 'center',
+    padding: 10, // Makes it easier to tap
+    marginTop: 5,
+  }
 });
 
 export default LoginScreen;

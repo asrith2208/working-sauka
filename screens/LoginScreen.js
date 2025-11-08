@@ -1,12 +1,11 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Platform } from 'react-native';
-// 1. Import the 'sendPasswordResetEmail' function
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { signInWithEmailAndPassword, PhoneAuthProvider, signInWithCredential, sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../firebase';
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
+// NOTE: We have REMOVED FirebaseRecaptchaVerifierModal and the useRef hook.
 
 const LoginScreen = () => {
-  const [loginMethod, setLoginMethod] = useState('email'); // 'email' or 'phone'
+  const [loginMethod, setLoginMethod] = useState('email');
   
   // State for Email Login
   const [email, setEmail] = useState('');
@@ -16,32 +15,33 @@ const LoginScreen = () => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [verificationId, setVerificationId] = useState(null);
   const [otpCode, setOtpCode] = useState('');
-  
-  const recaptchaVerifier = useRef(null);
 
   const handleLogin = () => {
-    if (loginMethod === 'email') {
-      signInWithEmailAndPassword(auth, email, password)
-        .then((userCredential) => {
-          console.log('Logged in with email:', userCredential.user.email);
-        })
-        .catch((error) => {
-          Alert.alert('Login Error', error.message);
-        });
-    }
+    signInWithEmailAndPassword(auth, email, password)
+      .then((userCredential) => {
+        console.log('Logged in with email:', userCredential.user.email);
+      })
+      .catch((error) => {
+        Alert.alert('Login Error', error.message);
+      });
   };
 
+  // --- THIS IS THE CORRECTED FUNCTION ---
   const handleSendOtp = async () => {
     try {
       const phoneProvider = new PhoneAuthProvider(auth);
-      const verId = await phoneProvider.verifyPhoneNumber(
-        phoneNumber,
-        recaptchaVerifier.current
-      );
+      // Pass `null` as the verifier. On a real device with a dev build,
+      // this uses SafetyNet (Android) or APN (iOS) for verification.
+      const verId = await phoneProvider.verifyPhoneNumber(phoneNumber, null);
       setVerificationId(verId);
       Alert.alert('OTP Sent', `An OTP has been sent to ${phoneNumber}.`);
     } catch (error) {
-      Alert.alert('OTP Error', error.message);
+      // Provide user-friendly errors
+      if (error.code === 'auth/invalid-phone-number') {
+        Alert.alert('OTP Error', 'The phone number is not valid. Please include the country code (e.g., +91).');
+      } else {
+        Alert.alert('OTP Error', error.message);
+      }
       console.error(error);
     }
   };
@@ -55,39 +55,30 @@ const LoginScreen = () => {
       Alert.alert('OTP Confirmation Error', error.message);
     }
   };
-
-  // 2. Add the handler function for the forgot password feature
+  
   const handleForgotPassword = () => {
     if (!email) {
       Alert.alert("Email Required", "Please enter your email address in the email field to reset your password.");
       return;
     }
-
     sendPasswordResetEmail(auth, email)
       .then(() => {
-        Alert.alert("Check Your Email", `A password reset link has been sent to ${email}. Please follow the instructions to reset your password.`);
+        Alert.alert("Check Your Email", `A password reset link has been sent to ${email}.`);
       })
       .catch((error) => {
-        console.error("Forgot Password Error:", error);
         if (error.code === 'auth/user-not-found') {
           Alert.alert("Error", "No user found with this email address.");
         } else {
-          Alert.alert("Error", "Could not send password reset email. Please try again.");
+          Alert.alert("Error", "Could not send password reset email.");
         }
       });
   };
 
   return (
     <View style={styles.container}>
-      <FirebaseRecaptchaVerifierModal
-        ref={recaptchaVerifier}
-        firebaseConfig={auth.config}
-        attemptInvisibleVerification={Platform.OS !== 'web'}
-      />
-
+      {/* The Recaptcha component has been completely removed */}
       <Text style={styles.title}>Saukyam Pads</Text>
 
-      {/* --- TABS TO SWITCH LOGIN METHOD --- */}
       <View style={styles.tabContainer}>
         <TouchableOpacity 
           style={[styles.tab, loginMethod === 'email' && styles.activeTab]}
@@ -103,7 +94,6 @@ const LoginScreen = () => {
         </TouchableOpacity>
       </View>
 
-      {/* --- EMAIL LOGIN FORM --- */}
       {loginMethod === 'email' && (
         <>
           <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
@@ -111,15 +101,12 @@ const LoginScreen = () => {
           <TouchableOpacity style={styles.button} onPress={handleLogin}>
             <Text style={styles.buttonText}>Login</Text>
           </TouchableOpacity>
-
-          {/* 3. Add the "Forgot Password?" button UI */}
           <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotPasswordButton}>
             <Text style={styles.linkText}>Forgot Password?</Text>
           </TouchableOpacity>
         </>
       )}
 
-      {/* --- PHONE LOGIN FORM --- */}
       {loginMethod === 'phone' && !verificationId && (
         <>
           <TextInput style={styles.input} placeholder="Phone Number (with country code, e.g., +91...)" value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" />
@@ -129,7 +116,6 @@ const LoginScreen = () => {
         </>
       )}
 
-      {/* --- OTP CONFIRMATION FORM --- */}
       {loginMethod === 'phone' && verificationId && (
         <>
           <TextInput style={styles.input} placeholder="Enter 6-Digit OTP" value={otpCode} onChangeText={setOtpCode} keyboardType="number-pad" maxLength={6} />
@@ -145,7 +131,6 @@ const LoginScreen = () => {
   );
 };
 
-// 4. Add the new style for the button
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#f0f4f7' },
   title: { fontSize: 32, fontWeight: 'bold', color: '#2d6a4f', marginBottom: 30 },
@@ -157,12 +142,8 @@ const styles = StyleSheet.create({
   input: { width: '100%', height: 50, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#b7e4c7', borderRadius: 8, paddingHorizontal: 15, marginBottom: 15, fontSize: 16 },
   button: { width: '100%', height: 50, backgroundColor: '#40916c', justifyContent: 'center', alignItems: 'center', borderRadius: 8, marginTop: 10 },
   buttonText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' },
-  linkText: { color: '#2d6a4f', fontSize: 16 },
-  forgotPasswordButton: {
-    alignSelf: 'center',
-    padding: 10, // Makes it easier to tap
-    marginTop: 5,
-  }
+  linkText: { color: '#2d6a4f', marginTop: 20, fontSize: 16 },
+  forgotPasswordButton: { alignSelf: 'center', marginTop: 15 }
 });
 
 export default LoginScreen;

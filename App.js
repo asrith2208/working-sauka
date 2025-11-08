@@ -1,131 +1,222 @@
 import React, { useState, useEffect } from 'react';
-import { TouchableOpacity, Text, StyleSheet, View, Platform } from 'react-native';
+import { View, Platform, TouchableOpacity, Text, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, updateDoc } from 'firebase/firestore'; // Import updateDoc
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { Ionicons } from '@expo/vector-icons';
+import 'react-native-get-random-values';
 
-// --- NEW IMPORTS FOR PUSH NOTIFICATIONS ---
+// --- PUSH NOTIFICATION & DEVICE IMPORTS ---
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 
-
-// --- Import All Screens ---
-// ... (all your existing screen imports remain the same)
+// --- IMPORT ALL SCREENS ---
 import LoginScreen from './screens/LoginScreen';
-// ... etc.
+import AdminDashboard from './screens/AdminDashboard';
+import DistributorDashboard from './screens/DistributorDashboard';
+import MedicalStoreDashboard from './screens/MedicalStoreDashboard';
+import AddDistributorScreen from './screens/AddDistributorScreen';
+import AddMedicalStoreScreen from './screens/AddMedicalStoreScreen';
+import AdminDistributorListScreen from './screens/AdminDistributorListScreen';
+import DistributorDetailScreen from './screens/DistributorDetailScreen';
+import MedicalStoreDetailScreen from './screens/MedicalStoreDetailScreen';
+import DistributorStoreListScreen from './screens/DistributorStoreListScreen';
+import ProfileScreen from './screens/ProfileScreen';
+import EditProfileScreen from './screens/EditProfileScreen';
+import ChangePasswordScreen from './screens/ChangePasswordScreen';
+import ProductListScreen from './screens/ProductListScreen';
+import ProductFormScreen from './screens/ProductFormScreen';
+import UserProductListScreen from './screens/UserProductListScreen';
+import ProductDetailScreen from './screens/ProductDetailScreen';
+import OrderSummaryScreen from './screens/OrderSummaryScreen';
+import OrderListScreen from './screens/OrderListScreen';
+import OrderDetailScreen from './screens/OrderDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
-// --- NEW PUSH NOTIFICATION SETUP (outside the main component) ---
-
-// This tells the app what to do with a notification when it arrives while the app is FORGROUND (open)
+// --- PUSH NOTIFICATION SETUP WITH DETAILED LOGGING ---
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
-    shouldPlaySound: true, // You can set this to true if you want sound
+    shouldPlaySound: true,
     shouldSetBadge: false,
   }),
 });
 
 async function registerForPushNotificationsAsync(userId) {
-  let token;
+  console.log("1. Starting push notification registration process...");
+  
   if (!Device.isDevice) {
-    console.log('Push Notifications require a physical device.');
+    console.log("2. FAILED: Not a physical device. Stopping.");
     return;
   }
   
+  console.log("2. SUCCESS: Running on a physical device.");
+
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
   
+  console.log(`3. Current permission status is: ${existingStatus}`);
+
   if (existingStatus !== 'granted') {
+    console.log("4. Permission is not granted, requesting it now...");
     const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
+    console.log(`5. User responded to permission request. New status is: ${finalStatus}`);
   }
   
   if (finalStatus !== 'granted') {
-    console.log('User did not grant permission for push notifications.');
+    console.log("6. FAILED: User did not grant permission. Stopping.");
     return;
   }
 
-  // Get the Expo Push Token
-  token = (await Notifications.getExpoPushTokenAsync()).data;
-  console.log("User's Expo Push Token:", token);
+  console.log("6. SUCCESS: Permission is granted.");
 
-  // Set up Android notification channel (does nothing on iOS)
-  if (Platform.OS === 'android') {
-    Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#FF231F7C',
-    });
-  }
-  
-  // Save the token to the user's document in Firestore
-  if (token && userId) {
-    try {
-      const userDocRef = doc(db, 'users', userId);
-      await updateDoc(userDocRef, {
-        expoPushToken: token,
+  try {
+    const token = (await Notifications.getExpoPushTokenAsync()).data;
+    console.log("7. SUCCESS: Got Expo Push Token:", token);
+
+    if (Platform.OS === 'android') {
+      Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
       });
-      console.log('Push token saved to Firestore.');
-    } catch (error) {
-      console.error("Error saving push token to Firestore: ", error);
     }
+    
+    if (token && userId) {
+      const userDocRef = doc(db, 'users', userId);
+      await updateDoc(userDocRef, { expoPushToken: token });
+      console.log('8. SUCCESS: Push token saved to Firestore.');
+    }
+  } catch (e) {
+    console.error("7. FAILED: An error occurred while getting the push token.", e);
   }
-
-  return token;
 }
 
 
-// --- Navigators (AuthStack and AppStack) ---
-// These remain the same. No changes needed here.
-function AuthStack() { /* ... */ }
-function AppStack({ userRole }) { /* ... */ }
+// --- NAVIGATORS ---
+function AuthStack() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
+    </Stack.Navigator>
+  );
+}
+
+function AppStack({ userRole }) {
+  const ProfileIcon = (navigation) => (
+    <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={{ marginRight: 15 }}>
+      <Ionicons name="person-circle-outline" size={28} color="#007AFF" />
+    </TouchableOpacity>
+  );
+
+  const commonScreens = (
+    <>
+      <Stack.Screen name="Profile" component={ProfileScreen} />
+      <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Edit Profile' }} />
+      <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ title: 'Change Password' }} />
+    </>
+  );
+
+  const userPlacingOrderScreens = (
+    <>
+      <Stack.Screen name="UserProductList" component={UserProductListScreen} options={{ title: 'Products' }} />
+      <Stack.Screen name="ProductDetail" component={ProductDetailScreen} options={{ title: 'Product Details' }} />
+      <Stack.Screen name="OrderSummary" component={OrderSummaryScreen} options={{ title: 'Order Summary' }} />
+    </>
+  );
+
+  const userOrderScreens = (
+    <>
+      <Stack.Screen name="OrderList" component={OrderListScreen} options={{ title: 'Orders' }} />
+      <Stack.Screen name="OrderDetail" component={OrderDetailScreen} options={{ title: 'Order Details' }} />
+    </>
+  );
+
+  return (
+    <Stack.Navigator>
+      {userRole === 'admin' && (
+        <>
+          <Stack.Screen name="AdminDashboard" component={AdminDashboard} options={({ navigation }) => ({ title: 'Admin Home', headerRight: () => ProfileIcon(navigation) })} />
+          <Stack.Screen name="AdminDistributorList" component={AdminDistributorListScreen} options={{ title: 'Distributor Performance' }} />
+          <Stack.Screen name="DistributorDetail" component={DistributorDetailScreen} options={({ route }) => ({ title: route.params.distributor.name })} />
+          <Stack.Screen name="MedicalStoreDetail" component={MedicalStoreDetailScreen} options={({ route }) => ({ title: route.params.medicalStore.name })} />
+          <Stack.Screen name="AddDistributor" component={AddDistributorScreen} options={{ title: 'Add Distributor' }} />
+          <Stack.Screen name="ProductList" component={ProductListScreen} options={({ navigation }) => ({ title: 'Manage Products', headerRight: () => (<TouchableOpacity onPress={() => navigation.navigate('ProductForm')}><Text style={{ color: '#007AFF', fontSize: 18 }}>Add</Text></TouchableOpacity>) })} />
+          <Stack.Screen name="ProductForm" component={ProductFormScreen} options={({ route }) => ({ title: route.params?.product ? 'Edit Product' : 'Add Product' })} />
+          {userOrderScreens}
+          {commonScreens}
+        </>
+      )}
+      {userRole === 'distributor' && (
+        <>
+          <Stack.Screen name="DistributorDashboard" component={DistributorDashboard} options={({ navigation }) => ({ title: 'Distributor Home', headerRight: () => ProfileIcon(navigation) })} />
+          <Stack.Screen name="DistributorStoreList" component={DistributorStoreListScreen} options={{ title: 'My Medical Stores' }} />
+          <Stack.Screen name="AddMedicalStore" component={AddMedicalStoreScreen} options={{ title: 'Add Medical Store' }} />
+          {userPlacingOrderScreens}
+          {userOrderScreens}
+          {commonScreens}
+        </>
+      )}
+      {userRole === 'medical_store' && (
+        <>
+          <Stack.Screen name="MedicalStoreDashboard" component={MedicalStoreDashboard} options={({ navigation }) => ({ title: 'Store Home', headerRight: () => ProfileIcon(navigation) })} />
+          {userPlacingOrderScreens}
+          {userOrderScreens}
+          {commonScreens}
+        </>
+      )}
+    </Stack.Navigator>
+  );
+}
 
 
-// --- Main App Component ---
-
+// --- MAIN APP COMPONENT ---
 export default function App() {
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (authenticatedUser) => {
-      if (authenticatedUser) {
-        const userDocRef = doc(db, 'users', authenticatedUser.uid);
-        const userDoc = await getDoc(userDocRef);
-        
-        if (userDoc.exists()) {
-          setUserRole(userDoc.data().role);
-          setUser(authenticatedUser);
+      try {
+        if (authenticatedUser) {
+          const userDocRef = doc(db, 'users', authenticatedUser.uid);
+          const userDoc = await getDoc(userDocRef);
 
-          // --- CALL THE PUSH NOTIFICATION REGISTRATION FUNCTION ---
-          // After a user is successfully identified, we get their permission and token
-          await registerForPushNotificationsAsync(authenticatedUser.uid);
-
+          if (userDoc.exists()) {
+            setUserRole(userDoc.data().role);
+            setUser(authenticatedUser);
+            await registerForPushNotificationsAsync(authenticatedUser.uid);
+          } else {
+            console.error("No user document found for this user! Logging out.");
+            auth.signOut();
+          }
         } else {
-          console.error("No user document found in Firestore for this user! Logging out.");
-          auth.signOut();
+          setUser(null);
+          setUserRole(null);
         }
-      } else {
-        setUser(null);
-        setUserRole(null);
+      } catch (error) {
+        console.error("Error during authentication check:", error);
+      } finally {
+        if (initializing) {
+          setInitializing(false);
+        }
       }
-      setLoading(false);
     });
 
     return unsubscribe;
   }, []);
 
-  if (loading) {
+  if (initializing) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        {/* You can add your app's logo or a spinner here */}
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8f9fa' }}>
+        <ActivityIndicator size="large" color="#40916c" />
+        <Text style={{ marginTop: 10, color: '#666' }}>Initializing App...</Text>
       </View>
     );
   }
@@ -136,11 +227,3 @@ export default function App() {
     </NavigationContainer>
   );
 }
-
-// Styles remain the same
-const styles = StyleSheet.create({
-    headerButton: {
-        color: '#007AFF',
-        fontSize: 18,
-    }
-});

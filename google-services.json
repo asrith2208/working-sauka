@@ -1,0 +1,82 @@
+{
+  "project_info": {
+    "project_number": "1093559246055",
+    "project_id": "saflo-6e13a",
+    "storage_bucket": "saflo-6e13a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1093559246055:android:bfa56700902dc8ac705642",
+        "android_client_info": {
+          "package_name": "com.example.saaflo_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1093559246055-r327r6umm2alug39lbvq58ggm3u46b5n.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCpBFvpv78bDyB2wNuFFf0El2sji55MrsU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1093559246055-r327r6umm2alug39lbvq58ggm3u46b5n.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1093559246055-1k1r5a7kqtdr00s584gsr95els3hu0p2.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.saafloApp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1093559246055:android:972aa2bfa422d1b0705642",
+        "android_client_info": {
+          "package_name": "com.uudoo.saflo"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1093559246055-r327r6umm2alug39lbvq58ggm3u46b5n.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCpBFvpv78bDyB2wNuFFf0El2sji55MrsU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1093559246055-r327r6umm2alug39lbvq58ggm3u46b5n.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1093559246055-1k1r5a7kqtdr00s584gsr95els3hu0p2.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.saafloApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
